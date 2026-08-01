@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -250,3 +251,15 @@ func TestWrite_DeterministicOrder(t *testing.T) {
 		"packagefile strings=/path/to/strings.a",
 	}, packageFileLines)
 }
+
+func TestParse_LargeLine(t *testing.T) {
+	// Create a packagefile directive line larger than bufio.MaxScanTokenSize (64 KB)
+	longPath := "example.com/large/pkg=" + bytes.NewBuffer(bytes.Repeat([]byte("a"), 100*1024)).String()
+	input := "packagefile " + longPath + "\n"
+
+	cfg, err := parse(strings.NewReader(input))
+	require.NoError(t, err)
+	assert.Len(t, cfg.PackageFile, 1)
+	assert.Equal(t, 100*1024, len(cfg.PackageFile["example.com/large/pkg"]))
+}
+

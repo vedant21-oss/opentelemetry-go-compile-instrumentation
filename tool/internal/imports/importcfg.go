@@ -40,6 +40,9 @@ func ParseImportCfg(filename string) (ImportConfig, error) {
 func parse(r io.Reader) (ImportConfig, error) {
 	var reg ImportConfig
 	scanner := bufio.NewScanner(r)
+	const maxCapacity = 10 * 1024 * 1024 // 10MB max capacity for large importcfg lines
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, maxCapacity)
 	scanner.Split(bufio.ScanLines)
 
 	for scanner.Scan() {
