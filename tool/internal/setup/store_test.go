@@ -112,3 +112,25 @@ func TestResolveRulePaths_NotFound(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to resolve import path")
 }
+
+func TestResolveRulePaths_DeterministicOrder(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	moduleDirs := map[string]bool{
+		dir1: true,
+		dir2: true,
+	}
+
+	rs := &rule.InstRuleSet{
+		FuncRules: map[string][]*rule.InstFuncRule{
+			"foo": {{
+				Path: "nonexistent/pkg",
+			}},
+		},
+	}
+
+	err := resolveRulePaths(t.Context(), []*rule.InstRuleSet{rs}, moduleDirs)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to resolve import path")
+}
