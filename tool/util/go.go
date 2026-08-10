@@ -211,10 +211,7 @@ func SplitCompileCmds(input string) []string {
 			continue
 		}
 
-		err := arg.WriteByte(c)
-		if err != nil {
-			ex.Fatal(err)
-		}
+		_ = arg.WriteByte(c)
 	}
 
 	if arg.Len() > 0 {
