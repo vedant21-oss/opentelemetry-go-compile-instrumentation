@@ -129,6 +129,8 @@ reassembled so the SDK always receives the full payload.
 
 ## Example
 
+### 1. Generating a Message (`POST /v1/messages`)
+
 ```go
 package main
 
@@ -144,7 +146,7 @@ func main() {
 	client := anthropic.NewClient()
 
 	resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model: "claude-sonnet-4-5",
+		Model:     anthropic.Model("claude-sonnet-4-5"),
 		MaxTokens: 1024,
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock("Hello, world!")),
@@ -158,11 +160,46 @@ func main() {
 }
 ```
 
-Build with otelc to instrument automatically:
+### 2. Counting Tokens (`POST /v1/messages/count_tokens`)
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
+
+func main() {
+	client := anthropic.NewClient()
+
+	count, err := client.Messages.CountTokens(context.Background(), anthropic.MessageCountTokensParams{
+		Model: anthropic.Model("claude-sonnet-4-5"),
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock("Hello, world!")),
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Input tokens: %d\n", count.InputTokens)
+}
+```
+
+### Running with Automatic Compile-Time Instrumentation
+
+Build your application using `otelc`:
 
 ```bash
 otelc go build -o myapp .
 ./myapp
 ```
 
-The resulting binary will emit GenAI spans for every Anthropic API call.
+The resulting binary will automatically emit GenAI spans for every Anthropic API call:
+* `chat claude-sonnet-4-5` for `Messages.New`
+* `count_tokens claude-sonnet-4-5` for `Messages.CountTokens`
+
