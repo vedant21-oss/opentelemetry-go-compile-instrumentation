@@ -41,6 +41,10 @@ This POC implements automatic OpenTelemetry observability for `POST /v1/messages
 
 ## 🏗️ Architecture & Flow
 
+### 🖥️ Live Telemetry Visualizer
+![Figure 2: Live visual telemetry dashboard showing request simulation, compile-time hook pipeline, and live OpenTelemetry span inspector for POST /v1/messages/count_tokens.](./telemetry-dashboard.png)
+*Figure 2: Live visual telemetry dashboard showing request simulation, compile-time hook pipeline, and live OpenTelemetry span inspector for POST /v1/messages/count_tokens.*
+
 ```text
 Application Code
    │
@@ -86,6 +90,9 @@ You can run the unit and mock tests directly from the root repository or from th
 cd instrumentation/github.com/anthropics/anthropic-sdk-go
 go test -v -run TestOtelMiddleware_CountTokens .
 ```
+
+![Test Suite Execution and Pass](./test-pass-count-tokens.png)
+*Figure 1: Unit and middleware test suite passing for Anthropic `count_tokens`.*
 
 **Expected Test Output:**
 ```text
