@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anthropic count_tokens OpenTelemetry Instrumentation POC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0a0d14;
+      --bg-surface: #111726;
+      --bg-card: rgba(22, 30, 48, 0.7);
+      --bg-card-hover: rgba(30, 41, 66, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(235, 115, 68, 0.4);
+      --primary: #f26522;
+      --primary-glow: rgba(242, 101, 34, 0.25);
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-purple: #8b5cf6;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-subtle: #64748b;
+      --code-bg: #07090e;
+      --radius: 12px;
+      --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(242, 101, 34, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+      line-height: 1.6;
+      padding-bottom: 60px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      background: rgba(10, 13, 20, 0.8);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #f26522 0%, #ff8c52 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      color: #fff;
+      box-shadow: 0 4px 16px var(--primary-glow);
+    }
+
+    .brand-text h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tag {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .brand-text p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .badge-bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .badge strong {
+      color: var(--text-main);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 32px auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 1fr 1.25fr;
+      gap: 28px;
+    }
+
+    @media (max-width: 1024px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+    }
+
+    .panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-title svg {
+      width: 20px;
+      height: 20px;
+      color: var(--primary);
+    }
+
+    /* Form Controls */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    select, textarea, input {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.92rem;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    select:focus, textarea:focus, input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+    }
+
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border: none;
+      transition: var(--transition);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #f26522 0%, #ea580c 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(242, 101, 34, 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-accent);
+    }
+
+    /* Interactive Flow Diagram */
+    .flow-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .flow-step {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      background: rgba(17, 23, 38, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.86rem;
+      transition: var(--transition);
+    }
+
+    .flow-step.active {
+      border-color: var(--primary);
+      background: rgba(242, 101, 34, 0.08);
+      box-shadow: 0 0 16px rgba(242, 101, 34, 0.15);
+    }
+
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .flow-step.active .step-num {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* Trace & Span Waterfall Card */
+    .span-card {
+      background: #090c14;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .span-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .span-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: #38bdf8;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .span-duration {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--accent-green);
+      background: rgba(16, 185, 129, 0.1);
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .attr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .attr-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .attr-key {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      color: var(--text-subtle);
+    }
+
+    .attr-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+      color: #f1f5f9;
+      word-break: break-all;
+    }
+
+    .attr-val.highlight {
+      color: #fb923c;
+      font-weight: 600;
+    }
+
+    /* Comparison section */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .comp-box {
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 0.82rem;
+    }
+
+    .comp-box.before {
+      background: rgba(239, 68, 68, 0.06);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .comp-box.after {
+      background: rgba(16, 185, 129, 0.06);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .comp-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .comp-box.before .comp-title { color: #f87171; }
+    .comp-box.after .comp-title { color: #34d399; }
+
+    /* Code Snippet Box */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+
+    .tab-bar {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .tab-btn.active {
+      background: var(--bg-surface);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">λ</div>
+      <div class="brand-text">
+        <h1>Anthropic Go SDK Instrumentation <span class="tag">POC Live</span></h1>
+        <p>Compile-time OpenTelemetry GenAI Semantic Convention Observability</p>
+      </div>
+    </div>
+    <div class="badge-bar">
+      <div class="badge">Endpoint: <strong>POST /v1/messages/count_tokens</strong></div>
+      <div class="badge">Status: <strong style="color: var(--accent-green);">Instrumented</strong></div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Left Column: Interactive Simulation Controller -->
+    <section class="panel" aria-label="Interactive Simulator">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Anthropic Request Simulator
+        </div>
+        <span style="font-size: 0.75rem; color: var(--text-muted);">Client Hook Injection</span>
+      </div>
+
+      <div class="form-group">
+        <label for="modelSelect">Target Model</label>
+        <select id="modelSelect">
+          <option value="claude-sonnet-4-5">claude-sonnet-4-5 (Default)</option>
+          <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+          <option value="claude-3-opus-20240229">claude-3-opus-20240229</option>
+          <option value="claude-3-haiku-20240307">claude-3-haiku-20240307</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="promptInput">Prompt Text</label>
+        <textarea id="promptInput">Explain OpenTelemetry compile-time instrumentation and why GenAI semantic conventions are essential for AI workloads.</textarea>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btnCountTokens">
+          <span>⚡ Count Tokens</span>
+        </button>
+        <button class="btn btn-secondary" id="btnSendMessage">
+          <span>💬 Send Message</span>
+        </button>
+      </div>
+
+      <!-- Execution Flow Visualizer -->
+      <div class="form-group" style="margin-top: 10px;">
+        <label>Compile-time & Runtime Pipeline</label>
+        <div class="flow-steps">
+          <div class="flow-step" id="step1">
+            <span class="step-num">1</span>
+            <span><code>anthropic.NewClient(...)</code> → OTel HTTP Middleware Injected</span>
+          </div>
+          <div class="flow-step" id="step2">
+            <span class="step-num">2</span>
+            <span><code>classifyOperation(path)</code> → Detected <strong id="stepOp">opCountTokens</strong></span>
+          </div>
+          <div class="flow-step" id="step3">
+            <span class="step-num">3</span>
+            <span>Span Started: <code><span id="stepSpanName">count_tokens claude-sonnet-4-5</span></code></span>
+          </div>
+          <div class="flow-step" id="step4">
+            <span class="step-num">4</span>
+            <span>Response Parsed: Extracted <code>gen_ai.usage.input_tokens</code></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Before vs After -->
+      <div class="comparison">
+        <div class="comp-box before">
+          <div class="comp-title">❌ Before (Previous State)</div>
+          <p><code>POST /v1/messages/count_tokens</code> was treated as <code>opUnknown</code> and passed through with <strong>0 spans</strong> emitted.</p>
+        </div>
+        <div class="comp-box after">
+          <div class="comp-title">✅ After (Your POC)</div>
+          <p>Full GenAI semantic convention client span created with request model, operation name, provider, and exact token counts.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Live OpenTelemetry Telemetry Inspector -->
+    <section class="panel" aria-label="OpenTelemetry Telemetry Inspector">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          OpenTelemetry Span Inspector
+        </div>
+        <span class="badge" style="background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); color: #60a5fa;">
+          TraceID: <code id="traceIdShort">4bf92f...</code>
+        </span>
+      </div>
+
+      <!-- Live Span View -->
+      <div class="span-card">
+        <div class="span-header">
+          <div class="span-name">
+            <svg style="width: 18px; height: 18px; color: #38bdf8;" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+            </svg>
+            <span id="displaySpanName">count_tokens claude-sonnet-4-5</span>
+          </div>
+          <div class="span-duration" id="displayDuration">118ms</div>
+        </div>
+
+        <div class="attr-grid">
+          <div class="attr-item">
+            <span class="attr-key">gen_ai.system</span>
+            <span class="attr-val">"anthropic"</span>
+          </div>
+          <div class="attr-item">
+            <span class="attr-key">gen_ai.operation.name</span>
+            <span class="attr-val highlight" id="displayOp">"count_tokens"</span>
+          </div>
+          <div class="attr-item">
+            <span class="attr-key">gen_ai.request.model</span>
+            <span class="attr-val" id="displayModel">"claude-sonnet-4-5"</span>
+          </div>
+          <div class="attr-item">
+            <span class="attr-key">gen_ai.provider.name</span>
+            <span class="attr-val">"anthropic"</span>
+          </div>
+          <div class="attr-item">
+            <span class="attr-key">gen_ai.usage.input_tokens</span>
+            <span class="attr-val highlight" id="displayTokens">24</span>
+          </div>
+          <div class="attr-item" id="extraOutputTokens" style="display: none;">
+            <span class="attr-key">gen_ai.usage.output_tokens</span>
+            <span class="attr-val">48</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- JSON / OTLP Output Tabs -->
+      <div>
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="switchTab('json')">OTel Span JSON</button>
+          <button class="tab-btn" onclick="switchTab('http')">HTTP Request / Response</button>
+        </div>
+
+        <div id="tabJson">
+          <pre><code id="jsonOutput"></code></pre>
+        </div>
+
+        <div id="tabHttp" style="display: none;">
+          <pre><code id="httpOutput"></code></pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    function estimateTokens(text) {
+      // Approximate 1 token ~ 4 chars for realistic calculation
+      const words = text.trim().split(/\s+/).filter(Boolean).length;
+      return Math.max(4, Math.round(text.length / 3.8));
+    }
+
+    function generateTraceId() {
+      const hex = '0123456789abcdef';
+      let id = '';
+      for (let i = 0; i < 32; i++) id += hex[Math.floor(Math.random() * 16)];
+      return id;
+    }
+
+    function generateSpanId() {
+      const hex = '0123456789abcdef';
+      let id = '';
+      for (let i = 0; i < 16; i++) id += hex[Math.floor(Math.random() * 16)];
+      return id;
+    }
+
+    function updateSimulation(isCountTokens) {
+      const model = document.getElementById('modelSelect').value;
+      const prompt = document.getElementById('promptInput').value;
+      const tokens = estimateTokens(prompt);
+      const traceId = generateTraceId();
+      const spanId = generateSpanId();
+      const duration = Math.floor(Math.random() * 60) + 95;
+
+      const opName = isCountTokens ? "count_tokens" : "chat";
+      const spanName = `${opName} ${model}`;
+
+      // Update flow steps
+      document.getElementById('stepOp').textContent = isCountTokens ? "opCountTokens" : "opMessages";
+      document.getElementById('stepSpanName').textContent = spanName;
+
+      // Animate steps
+      const steps = [document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3'), document.getElementById('step4')];
+      steps.forEach((s, idx) => {
+        s.classList.remove('active');
+        setTimeout(() => s.classList.add('active'), idx * 120);
+      });
+
+      // Update Inspector
+      document.getElementById('displaySpanName').textContent = spanName;
+      document.getElementById('displayDuration').textContent = `${duration}ms`;
+      document.getElementById('displayOp').textContent = `"${opName}"`;
+      document.getElementById('displayModel').textContent = `"${model}"`;
+      document.getElementById('displayTokens').textContent = tokens;
+      document.getElementById('traceIdShort').textContent = traceId.substring(0, 8) + '...';
+
+      const outputTokenDiv = document.getElementById('extraOutputTokens');
+      if (isCountTokens) {
+        outputTokenDiv.style.display = 'none';
+      } else {
+        outputTokenDiv.style.display = 'flex';
+      }
+
+      // JSON Representation
+      const spanData = {
+        "Name": spanName,
+        "SpanContext": {
+          "TraceID": traceId,
+          "SpanID": spanId,
+          "TraceFlags": "01"
+        },
+        "Parent": {
+          "TraceID": "00000000000000000000000000000000",
+          "SpanID": "0000000000000000"
+        },
+        "SpanKind": "SpanKindClient",
+        "StartTime": new Date(Date.now() - duration).toISOString(),
+        "EndTime": new Date().toISOString(),
+        "Attributes": [
+          { "Key": "gen_ai.system", "Value": "anthropic" },
+          { "Key": "gen_ai.operation.name", "Value": opName },
+          { "Key": "gen_ai.request.model", "Value": model },
+          { "Key": "gen_ai.provider.name", "Value": "anthropic" },
+          { "Key": "gen_ai.usage.input_tokens", "Value": tokens }
+        ]
+      };
+
+      if (!isCountTokens) {
+        spanData.Attributes.push(
+          { "Key": "gen_ai.response.id", "Value": "msg_" + spanId.substring(0, 10) },
+          { "Key": "gen_ai.usage.output_tokens", "Value": 32 },
+          { "Key": "gen_ai.usage.total_tokens", "Value": tokens + 32 },
+          { "Key": "gen_ai.response.finish_reasons", "Value": ["end_turn"] }
+        );
+      }
+
+      document.getElementById('jsonOutput').textContent = JSON.stringify(spanData, null, 2);
+
+      // HTTP representation
+      const httpPayload = isCountTokens ? 
+`POST /v1/messages/count_tokens HTTP/1.1
+Host: api.anthropic.com
+Content-Type: application/json
+User-Agent: anthropic-go/v1.61.0
+Traceparent: 00-${traceId}-${spanId}-01
+
+{
+  "model": "${model}",
+  "messages": [
+    { "role": "user", "content": ${JSON.stringify(prompt)} }
+  ]
+}
+
+--------------------------------------------------
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "input_tokens": ${tokens}
+}` :
+`POST /v1/messages HTTP/1.1
+Host: api.anthropic.com
+Content-Type: application/json
+User-Agent: anthropic-go/v1.61.0
+Traceparent: 00-${traceId}-${spanId}-01
+
+{
+  "model": "${model}",
+  "max_tokens": 1024,
+  "messages": [
+    { "role": "user", "content": ${JSON.stringify(prompt)} }
+  ]
+}
+
+--------------------------------------------------
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "msg_${spanId.substring(0, 10)}",
+  "type": "message",
+  "role": "assistant",
+  "model": "${model}",
+  "content": [{ "type": "text", "text": "Hello! How can I assist you today?" }],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": ${tokens},
+    "output_tokens": 32
+  }
+}`;
+
+      document.getElementById('httpOutput').textContent = httpPayload;
+    }
+
+    function switchTab(tab) {
+      const tabs = document.querySelectorAll('.tab-btn');
+      tabs.forEach(t => t.classList.remove('active'));
+      
+      if (tab === 'json') {
+        tabs[0].classList.add('active');
+        document.getElementById('tabJson').style.display = 'block';
+        document.getElementById('tabHttp').style.display = 'none';
+      } else {
+        tabs[1].classList.add('active');
+        document.getElementById('tabJson').style.display = 'none';
+        document.getElementById('tabHttp').style.display = 'block';
+      }
+    }
+
+    document.getElementById('btnCountTokens').addEventListener('click', () => updateSimulation(true));
+    document.getElementById('btnSendMessage').addEventListener('click', () => updateSimulation(false));
+    document.getElementById('modelSelect').addEventListener('change', () => updateSimulation(true));
+
+    // Initialize with count_tokens
+    updateSimulation(true);
+  </script>
+</body>
+</html>
