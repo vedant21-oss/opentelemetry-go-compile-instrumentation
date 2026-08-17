@@ -5,8 +5,8 @@ package runtime
 
 import (
 	"os"
-	"slices"
 	"strings"
+	"sync"
 )
 
 // SetupOTelSDK initializes the OpenTelemetry SDK.
@@ -60,6 +60,70 @@ func SetupOTelSDK() {
 	})
 }
 
+type instrumentationFilter struct {
+	enabledRaw  string
+	disabledRaw string
+	enabledSet  map[string]struct{}
+	disabledSet map[string]struct{}
+	hasEnabled  bool
+	hasDisabled bool
+}
+
+var (
+	filterMu sync.RWMutex
+	filter   *instrumentationFilter
+)
+
+func getInstrumentationFilter() *instrumentationFilter {
+	enabledRaw := os.Getenv("OTEL_GO_ENABLED_INSTRUMENTATIONS")
+	disabledRaw := os.Getenv("OTEL_GO_DISABLED_INSTRUMENTATIONS")
+
+	filterMu.RLock()
+	curr := filter
+	if curr != nil && curr.enabledRaw == enabledRaw && curr.disabledRaw == disabledRaw {
+		filterMu.RUnlock()
+		return curr
+	}
+	filterMu.RUnlock()
+
+	filterMu.Lock()
+	defer filterMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if filter != nil && filter.enabledRaw == enabledRaw && filter.disabledRaw == disabledRaw {
+		return filter
+	}
+
+	newFilter := &instrumentationFilter{
+		enabledRaw:  enabledRaw,
+		disabledRaw: disabledRaw,
+	}
+
+	if enabledRaw != "" {
+		newFilter.hasEnabled = true
+		newFilter.enabledSet = parseInstrumentationSet(enabledRaw)
+	}
+
+	if disabledRaw != "" {
+		newFilter.hasDisabled = true
+		newFilter.disabledSet = parseInstrumentationSet(disabledRaw)
+	}
+
+	filter = newFilter
+	return newFilter
+}
+
+func parseInstrumentationSet(list string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for item := range strings.SplitSeq(list, ",") {
+		trimmed := strings.TrimSpace(strings.ToLower(item))
+		if trimmed != "" {
+			set[trimmed] = struct{}{}
+		}
+	}
+	return set
+}
+
 // Instrumented checks if instrumentation is enabled via environment variables.
 //
 // Environment variables (following OTel JS pattern):
@@ -73,37 +137,21 @@ func SetupOTelSDK() {
 //
 // The instrumentationName should be lowercase (e.g., "nethttp", "grpc").
 func Instrumented(instrumentationName string) bool {
+	f := getInstrumentationFilter()
+
 	name := strings.ToLower(instrumentationName)
 
-	// Check if specific instrumentations are enabled
-	enabledList := os.Getenv("OTEL_GO_ENABLED_INSTRUMENTATIONS")
-	if enabledList != "" {
-		enabled := parseInstrumentationList(enabledList)
-		if !slices.Contains(enabled, name) {
+	if f.hasEnabled {
+		if _, ok := f.enabledSet[name]; !ok {
 			return false
 		}
 	}
 
-	// Check if this instrumentation is explicitly disabled
-	disabledList := os.Getenv("OTEL_GO_DISABLED_INSTRUMENTATIONS")
-	if disabledList != "" {
-		disabled := parseInstrumentationList(disabledList)
-		if slices.Contains(disabled, name) {
+	if f.hasDisabled {
+		if _, ok := f.disabledSet[name]; ok {
 			return false
 		}
 	}
 
 	return true
-}
-
-// parseInstrumentationList parses a comma-separated list of instrumentation names.
-func parseInstrumentationList(list string) []string {
-	var result []string
-	for item := range strings.SplitSeq(list, ",") {
-		trimmed := strings.TrimSpace(strings.ToLower(item))
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
 }

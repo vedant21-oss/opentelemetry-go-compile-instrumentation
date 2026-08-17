@@ -4,6 +4,7 @@
 package runtime
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,5 +91,36 @@ func TestInstrumented(t *testing.T) {
 			result := Instrumented(tt.instrumentationName)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestInstrumentedConcurrent(t *testing.T) {
+	t.Setenv("OTEL_GO_ENABLED_INSTRUMENTATIONS", "nethttp,grpc,redis")
+	t.Setenv("OTEL_GO_DISABLED_INSTRUMENTATIONS", "redis")
+
+	var wg sync.WaitGroup
+	for range 50 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 1000 {
+				assert.True(t, Instrumented("nethttp"))
+				assert.True(t, Instrumented("grpc"))
+				assert.False(t, Instrumented("redis"))
+				assert.False(t, Instrumented("kafka"))
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func BenchmarkInstrumented(b *testing.B) {
+	b.Setenv("OTEL_GO_ENABLED_INSTRUMENTATIONS", "nethttp,grpc,redis,kafka,mongo,database/sql")
+	b.Setenv("OTEL_GO_DISABLED_INSTRUMENTATIONS", "mongo")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Instrumented("nethttp")
 	}
 }
