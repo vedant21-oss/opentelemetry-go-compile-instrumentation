@@ -107,14 +107,17 @@ func WriteFile(filePath string, root *dst.File) error {
 	return writeFile(file, filePath, root)
 }
 
-func writeFile(w writeCloser, filePath string, root *dst.File) error {
+func writeFile(w writeCloser, filePath string, root *dst.File) (err error) {
+	defer func() {
+		if closeErr := w.Close(); closeErr != nil && err == nil {
+			err = ex.Wrapf(closeErr, "failed to close file %s", filePath)
+		}
+	}()
+
 	r := decorator.NewRestorer()
-	if err := r.Fprint(w, root); err != nil {
-		_ = w.Close()
-		return ex.Wrapf(err, "failed to write to file %s", filePath)
-	}
-	if err := w.Close(); err != nil {
-		return ex.Wrapf(err, "failed to close file %s", filePath)
+	if printErr := r.Fprint(w, root); printErr != nil {
+		err = ex.Wrapf(printErr, "failed to write to file %s", filePath)
+		return err
 	}
 	return nil
 }

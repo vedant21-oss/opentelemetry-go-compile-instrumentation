@@ -197,3 +197,27 @@ func TestWriteFile_CloseError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to close file")
 }
+
+type panicWriteCloser struct {
+	closed bool
+}
+
+func (p *panicWriteCloser) Write([]byte) (int, error) {
+	panic("unexpected formatting failure during write")
+}
+
+func (p *panicWriteCloser) Close() error {
+	p.closed = true
+	return nil
+}
+
+func TestWriteFile_PanicSafety(t *testing.T) {
+	f, err := ParseFile("parser_test.go")
+	require.NoError(t, err)
+
+	mock := &panicWriteCloser{}
+	assert.Panics(t, func() {
+		_ = writeFile(mock, "out.go", f)
+	})
+	assert.True(t, mock.closed, "writer Close must be called even when write panics")
+}

@@ -141,6 +141,30 @@ func TestWriteFile_CloseError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to close file")
 }
 
+type panicWriteCloser struct {
+	closed bool
+}
+
+func (p *panicWriteCloser) Write([]byte) (int, error) {
+	panic("disk write failure panic")
+}
+
+func (p *panicWriteCloser) Close() error {
+	p.closed = true
+	return nil
+}
+
+func TestWriteFile_PanicSafety(t *testing.T) {
+	cfg := ImportConfig{
+		PackageFile: map[string]string{"fmt": "/path/to/fmt.a"},
+	}
+	mock := &panicWriteCloser{}
+	assert.Panics(t, func() {
+		_ = cfg.writeFile(mock, "importcfg")
+	})
+	assert.True(t, mock.closed, "writer Close must be called even when write panics")
+}
+
 func TestRoundTrip(t *testing.T) {
 	input := `# comment line
 packagefile fmt=/usr/local/go/pkg/linux_amd64/fmt.a

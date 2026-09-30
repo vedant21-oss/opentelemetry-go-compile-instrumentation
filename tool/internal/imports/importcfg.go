@@ -117,13 +117,16 @@ func (r *ImportConfig) WriteFile(filename string) error {
 	return r.writeFile(file, filename)
 }
 
-func (r *ImportConfig) writeFile(w writeCloser, filename string) error {
-	if err := r.write(w); err != nil {
-		_ = w.Close()
-		return ex.Wrapf(err, "failed to write to file %s", filename)
-	}
-	if err := w.Close(); err != nil {
-		return ex.Wrapf(err, "failed to close file %s", filename)
+func (r *ImportConfig) writeFile(w writeCloser, filename string) (err error) {
+	defer func() {
+		if closeErr := w.Close(); closeErr != nil && err == nil {
+			err = ex.Wrapf(closeErr, "failed to close file %s", filename)
+		}
+	}()
+
+	if writeErr := r.write(w); writeErr != nil {
+		err = ex.Wrapf(writeErr, "failed to write to file %s", filename)
+		return err
 	}
 	return nil
 }
