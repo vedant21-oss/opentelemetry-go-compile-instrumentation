@@ -22,7 +22,12 @@ func TestShouldExclude(t *testing.T) {
 		{"instrumentation/redis/Thumbs.db", true},
 		{"instrumentation/redis/desktop.ini", true},
 		{"instrumentation/redis/build.log", true},
+		{"instrumentation/redis/README.md", true},
+		{"README.md", true},
 		{"instrumentation/redis/client.go", false},
+		// .md must match the extension, not merely appear in the name
+		{"instrumentation/redis/md.go", false},
+		{"instrumentation/redis/readme.markdown", false},
 		{"instrumentation/redis/go.sum", false},
 		// only an exact junk filename is excluded, not anything containing it
 		{"instrumentation/redis/not.DS_Store.go", false},
@@ -103,6 +108,38 @@ func TestArchive_ExcludesOSJunk(t *testing.T) {
 	}
 	if !containsSuffix(names, "client.go") {
 		t.Errorf("archive is missing expected source file, got entries: %v", names)
+	}
+}
+
+// TestArchive_ExcludesMarkdown covers the churn described in #1440: a README
+// under instrumentation/ used to land in the archive, so a docs-only change
+// regenerated the binary and conflicted every open pull request.
+func TestArchive_ExcludesMarkdown(t *testing.T) {
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "client.go"), []byte("package redis\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "README.md"), []byte("# redis\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outPath := filepath.Join(t.TempDir(), "out.tgz")
+	if err := archive(outPath, []string{srcDir}); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	names := readTarNames(t, outPath)
+	var sawGo bool
+	for _, name := range names {
+		if filepath.Ext(name) == ".md" {
+			t.Errorf("archive contains markdown %q", name)
+		}
+		if filepath.Base(name) == "client.go" {
+			sawGo = true
+		}
+	}
+	if !sawGo {
+		t.Error("archive is missing client.go, the exclusion is too broad")
 	}
 }
 

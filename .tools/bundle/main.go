@@ -150,8 +150,15 @@ var junkFileNames = map[string]bool{
 }
 
 // shouldExclude reports whether an archive entry should be omitted.
+//
+// Markdown is excluded because the archive carries source into the user's
+// build and nothing reads documentation from it: extractOtelcBundle unpacks
+// it and the walk in pin.go only parses rule files. Including it means a
+// docs-only change to instrumentation/ regenerates the archive, and because
+// the archive is a binary git cannot merge, that conflicts every open pull
+// request.
 func shouldExclude(name string) bool {
-	if strings.HasSuffix(name, ".log") {
+	if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".md") {
 		return true
 	}
 	return junkFileNames[filepath.Base(name)]
